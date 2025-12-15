@@ -484,6 +484,39 @@ impl<'gcx> Ty<'gcx> {
                 }
             }
 
+            // Integer literals can coerce to typed integers if they fit.
+            // Non-negative literals can coerce to both uint and int types.
+            //
+            // TypeSize stores ceil(bit_len/8), so `int_literal[1]` means the literal needs
+            // at most 8 bits. For unsigned targets, we check size.bits() <= target.bits().
+            // For signed targets, we need strict inequality since we lose precision in the
+            // rounding - e.g., both 127 (7 bits) and 128 (8 bits) become int_literal[1],
+            // but only 127 fits in int8.
+            (IntLiteral(neg, size), Elementary(UInt(target_size))) => {
+                // Unsigned: reject negative, check size fits
+                if neg {
+                    Result::Err(())
+                } else if size.bits() <= target_size.bits() {
+                    Ok(())
+                } else {
+                    Result::Err(())
+                }
+            }
+            (IntLiteral(neg, size), Elementary(Int(target_size))) => {
+                // Signed: need strict inequality for non-negative values because TypeSize
+                // rounds up to bytes, losing precision. E.g., int_literal[1] can only
+                // safely coerce to int16+, not int8, since we can't distinguish 127 from 128.
+                // For negative values, we use non-strict inequality since negative int_literal[N]
+                // can fit in int(N*8) (e.g., -128 fits in int8).
+                if neg {
+                    if size.bits() <= target_size.bits() { Ok(()) } else { Result::Err(()) }
+                } else if size.bits() < target_size.bits() {
+                    Ok(())
+                } else {
+                    Result::Err(())
+                }
+            }
+
             // TODO: more implicit conversions
             _ => Result::Err(()),
         }
