@@ -502,19 +502,13 @@ impl<'gcx> Ty<'gcx> {
                     Result::Err(())
                 }
             }
-            (IntLiteral(neg, size), Elementary(Int(target_size))) => {
-                // Signed: need strict inequality for non-negative values because TypeSize
-                // rounds up to bytes, losing precision. E.g., int_literal[1] can only
-                // safely coerce to int16+, not int8, since we can't distinguish 127 from 128.
-                // For negative values, we use non-strict inequality since negative int_literal[N]
-                // can fit in int(N*8) (e.g., -128 fits in int8).
-                if neg {
-                    if size.bits() <= target_size.bits() { Ok(()) } else { Result::Err(()) }
-                } else if size.bits() < target_size.bits() {
-                    Ok(())
-                } else {
-                    Result::Err(())
-                }
+            (IntLiteral(_neg, size), Elementary(Int(target_size))) => {
+                // Signed: need strict inequality because TypeSize rounds up to bytes,
+                // losing precision. E.g., int_literal[1] covers 0-255 (non-negative) or
+                // -256 to -1 (negative), and we can't distinguish edge cases like 127 vs 128
+                // or -128 vs -129. So int_literal[N] can only safely coerce to int types
+                // with more than N bytes (i.e., int16+ for int_literal[1]).
+                if size.bits() < target_size.bits() { Ok(()) } else { Result::Err(()) }
             }
 
             // TODO: more implicit conversions
